@@ -15,6 +15,10 @@ import collections
 import cv2
 
 import helper
+from custom_dataset import *
+from custom_transform import *
+from loss import *
+from train import *
 
 
 PATH = Path('../pascal')
@@ -98,3 +102,65 @@ df_bb = pd.DataFrame({'file_name': [TRAIN_IMAGE[o] for o in TRAIN_ID],
 					columns = ['file_name', 'bbs'])
 
 df_bb.to_csv(CSV_BB, index = False)
+
+
+'''
+Transformations
+'''
+image_train_tfms = transforms.Compose([transforms.ToPILImage(),
+                                     transforms.Resize((224,224)),
+                                     transforms.ToTensor()])
+
+bbox_train_tfms = transforms.Compose([ResizeIB((224, 224)),
+                                     RandomFlipIB(),
+                                     ConvertTensor()])
+
+
+'''
+
+LOADING DATA
+
+'''
+
+'''
+Image Data
+'''
+image_data = PascalImage(csv_dir = 'csv_folder/cat.csv', img_dir= IMAGE_PATH, transforms= image_train_tfms)
+
+'''
+Bounding Box Data
+'''
+
+bb_data = BoundingBox(csv_dir= 'csv_folder/largest_bb.csv', img_dir= IMAGE_PATH, transforms= bbox_train_tfms)
+
+'''
+Combine Data
+'''
+
+data = CombineData(img_data= image_data, bb_data= bb_data)
+
+data_dl = DataLoader(data, batch_size= 64, shuffle= True)
+
+
+model = models.vgg16(pretrained = True)
+
+'''
+Add custom classifer to vgg pretrained model
+'''
+
+classifier = nn.Sequential(
+	nn.Linear(in_features = 25088, out_features = 256),
+	nn.ReLU(),
+	nn.BatchNorm1d(256),
+	nn.Dropout(0.5),
+	nn.Linear(in_features = 256, out_features = 4 + 20))
+
+model = model.classifier
+
+# Optimizer
+
+optimizer = optim.Adam(model.classifier.parameters(), lr = 0.001)
+
+# <-----------------TRAINING----------------->
+
+train(epochs= 1,model= model ,optimizer= optimizer, train_dataloader= data_dl)
